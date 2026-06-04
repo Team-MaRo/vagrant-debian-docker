@@ -1,4 +1,0 @@
-[submodule "lib/bertrand-benoit/scripts-common"]
-	path = lib/bertrand-benoit/scripts-common
-	url = git@gitlab.com:bertrand-benoit/scripts-common.git
-	branch = stable

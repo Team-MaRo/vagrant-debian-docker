@@ -1,17 +1,26 @@
+# https://editorconfig.org/
 root = true
 
 [*]
-charset = utf-8
 end_of_line = lf
-indent_size = 2
 indent_style = space
+indent_size = 2
+charset = utf-8
 insert_final_newline = true
 trim_trailing_whitespace = true
-max_line_length = 150
-tab_width = 2
+
+ij_continuation_indent_size = 2
 ij_visual_guides = 80, 120, 150
 
-[.git/**]
-# Avoid git patch fail to apply due to the stripped unmodified lines that
-# contains only spaces, which also matches as "trailing spaces"
+# Avoid git patch fail to apply due to stripped unmodified lines that contains only spaces
+[/.git/**]
 trim_trailing_whitespace = false
+
+[*.md]
+# Trailing whitespace means manual linebreaks
+trim_trailing_whitespace = false
+
+# Don't check indentation size as it can't handle intentional indentation
+# in list item after hardbreaks to align with the node markers, use
+# Markdownlint to check instead
+indent_size = unset
