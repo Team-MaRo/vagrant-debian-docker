@@ -1,35 +1,12 @@
 variable "box_basename" {
   type    = string
-  default = "bento/debian-11"
+  default = "bento/debian-13"
 }
 
 variable "build_directory" {
   type    = string
   default = "../build"
 }
-
-variable "guest_additions_url" {
-  type    = string
-  default = ""
-}
-
-variable "name" {
-  type    = string
-  default = "D3strukt0r/debian-docker"
-}
-
-variable "version" {
-  type    = string
-  default = "TIMESTAMP"
-}
-
-variable "cloud_token" {
-  type      = string
-  sensitive = true
-  default   = "${env("VAGRANT_CLOUD_TOKEN")}"
-}
-
-locals { timestamp = regex_replace(timestamp(), "[- TZ:]", "") }
 
 packer {
   required_plugins {
@@ -52,31 +29,14 @@ build {
   name    = "debian-docker"
   sources = ["source.vagrant.base"]
 
-  #provisioner "shell" {
-  #  execute_command = "{{ .Vars }} sudo -E -S sh '{{ .Path }}'"
-  #  inline          = ["mount -o loop $${HOME}/VBoxGuestAdditions.iso /mnt", "/mnt/VBoxLinuxAdditions.run install", "umount /mnt", "rm $${HOME}/VBoxGuestAdditions.iso"]
-  #}
-
+  # Provision as root (Docker, apt, SSH, system-wide shell config). The script
+  # itself drops to the "vagrant" user where appropriate.
   provisioner "shell" {
     environment_vars = ["HOME_DIR=/home/vagrant"]
     execute_command  = "echo 'vagrant' | {{ .Vars }} sudo -S -E bash '{{ .Path }}'"
-    script           = "provision.sh"
+    script           = "${path.root}/provision.sh"
   }
 
-  provisioner "shell" {
-    environment_vars = ["HOME_DIR=/home/vagrant"]
-    execute_command  = "{{ .Vars }} bash '{{ .Path }}'"
-    script           = "provision-user.sh"
-  }
-
-  #post-processors {
-  #  post-processor "artifice" {
-  #    files = ["${var.build_directory}/package.box"]
-  #  }
-  #  #post-processor "vagrant-cloud" {
-  #  #  access_token = var.cloud_token
-  #  #  box_tag      = var.name
-  #  #  version      = "0.1.${local.timestamp}"
-  #  #}
-  #}
+  # The shared box Vagrantfile (src/Vagrantfile) is embedded into the resulting
+  # box by bin/build.sh after Packer finishes. See README.md ("Development").
 }

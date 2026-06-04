@@ -1,56 +1,19 @@
 vm:
-  name: 'Debian Docker VM'
+  name: 'Debian Docker VM (test)'
   cpus: 2
   memory: 2048
 
-# Hostname and IP for local box: IP must be changed if multiple VMs are running
-# on the same host. Leave IP empty to assign it dynamically via DHCP -- the
-# host updater will not work in this case.
 network:
-  # IP range "192.168.56.1 - 192.168.63.254" is allowed. (Don't use .1 in case
-  # it's used by a router.
   ip: 192.168.56.2
-  # Use .test TLD for local development, and specifically not .local on macOS
-  # since conflicts with Bonjour can lead to performance issues(opens new window).
   hostname: 'debian-docker.test'
-  #aliases: []
 
-folder:
-  # NFS folders do not work on Windows hosts. Vagrant will ignore your request
-  # for NFS synced folders on Windows.
-  # To avoid having to enter sudo password every time you run vagrant up,
-  # follow guide on:
-  # https://www.vagrantup.com/docs/synced-folders/nfs#root-privilege-requirement
-  type: 'nfs'
-  # The following folders will be ignored when syncing with rsync.
-  rsync:
-    exclude:
-      - '.git/'
-      - '.github/'
-      - '.idea/'
-      - '.vscode/'
-      - '.DS_Store'
-      - '.editorconfig'
-      - '.gitattributes'
-      - '.gitignore'
-      - '.vagrant.config.yml'
-      - 'CHANGELOG.md'
-      - 'LICENSE.txt'
-      - 'README.md'
-  docker:
-    # On Linux hosts you can use the default "/var/lib/docker/overlay2" path
-    # On Windows and MacOS its not directly accessible, so you need to use
-    # something else
-    # On MacOS it's in "~/Library/Containers/com.docker.docker/Data/vms/0", use
-    # "screen ~/Library/Containers/com.docker.docker/Data/vms/0/tty" to access
-    # "/var/lib/docker" in it. Leave with "CTRL+A K Y"
-    #image_cache: '~/.docker/cache/image'
-    #image_cache: '~/.docker/cache/full'
-    build_cache: '~/.docker/cache/build'
+# Use the default VirtualBox shared folder so this test works on any host OS
+# (NFS does not work on Windows; SMB/NFS need extra setup). Switch to
+# nfs/rsync/smb in real projects.
+#folder:
+#  type: 'nfs'
 
-ssh:
-  private_key: '~/.ssh/id_ed25519'
-  public_key: '~/.ssh/id_ed25519.pub'
-
-gpg:
-  id: 'C9E5AB85364CA764'
+# Optionally run the example compose stack on `vagrant up` (see compose.yml).
+#docker:
+#  compose_file: 'compose.yml'
+#  profile: 'dev'

@@ -1,0 +1,68 @@
+# ==============================================================================
+# Configuration for the D3strukt0r/debian-docker box.
+# ------------------------------------------------------------------------------
+# Copy this file to ".vagrant.config.yml" and adjust it per project. The box's
+# embedded Vagrantfile reads ".vagrant.config.dist.yml" first and then overlays
+# ".vagrant.config.yml" on top, so you only need to keep the keys you change.
+#
+# Every key below is OPTIONAL; sensible defaults apply when omitted.
+# ==============================================================================
+
+vm:
+  # Name shown in the VirtualBox GUI (falls back to network.hostname).
+  name: 'Debian Docker VM'
+  cpus: 2
+  memory: 2048
+
+network:
+  # Static private IP. The allowed range is 192.168.56.1 - 192.168.63.254.
+  # (Avoid .1 in case it's used by a router.) Each box on the same host needs a
+  # unique IP. Leave unset to use DHCP -- note the hostsupdater won't work then.
+  ip: 192.168.56.2
+  # Use the .test TLD for local development (not .local on macOS -- it conflicts
+  # with Bonjour). Avoid dashes "-", which can make the host unreachable.
+  hostname: 'debian-docker.test'
+  # Extra hostnames (requires the vagrant-hostsupdater plugin).
+  #aliases:
+  #  - 'traefik.debian-docker.test'
+
+folder:
+  # "nfs", "rsync", "smb", or omit for the default VirtualBox shared folder.
+  # NFS folders do NOT work on Windows hosts. To avoid sudo prompts on every
+  # `vagrant up`, see https://developer.hashicorp.com/vagrant/docs/synced-folders/nfs
+  #type: 'nfs'
+  rsync:
+    # Only used when folder.type = "rsync".
+    exclude:
+      - '.git/'
+      - '.idea/'
+      - '.vscode/'
+      - 'node_modules/'
+  # If you use SMB (Windows hosts), set type: 'smb' and provide credentials:
+  #smb:
+  #  username:
+  #  password:
+  docker:
+    # Share a host directory as the Docker build cache (reused across machines).
+    #build_cache: '~/.docker/cache/build'
+
+ssh:
+  # Forward the host's SSH agent into the box (recommended for Git access)...
+  #forward_agent: true
+  # ...or copy a specific key pair into the box. If neither is set, the box
+  # falls back to ~/.ssh/id_ed25519 (then ~/.ssh/id_rsa) on the host.
+  private_key: '~/.ssh/id_ed25519'
+  public_key: '~/.ssh/id_ed25519.pub'
+
+docker:
+  # Prompt for and run `docker login` on provision (for private images).
+  #login: true
+  # Start/stop Docker Compose together with the machine (`vagrant up`/`halt`).
+  #compose_file: 'compose.vm.yml'
+  #profile: 'dev'
+
+# Project-specific provisioning lives in your repo, not in the box. Point these
+# at scripts (paths relative to the project root) to run them automatically.
+#provision:
+#  post_setup: 'vagrant/post-setup.sh'  # runs once on first provision
+#  post_boot:  'vagrant/post-boot.sh'   # runs on every `vagrant up`
