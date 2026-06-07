@@ -1,0 +1,38 @@
+{
+  // Lint/format tooling for this repo so you don't need Ruby on the host:
+  //   * RuboCop  -> the Vagrantfiles (src/Vagrantfile, test/Vagrantfile)
+  //   * ShellCheck -> the shell scripts (bin/*.sh, src/*.sh, .github/scripts/*.sh)
+  //
+  // NOTE: this container is only for editing/linting. The box itself is still
+  // built on the host — VirtualBox cannot run inside a container.
+  "name": "vagrant-debian-docker tooling",
+  "image": "mcr.microsoft.com/devcontainers/ruby:1-3.3-bookworm",
+
+  // RuboCop comes from the (tooling-only) Gemfile via bundler; ShellCheck from apt.
+  "postCreateCommand": "bundle install && sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Shopify.ruby-lsp",
+        "timonwong.shellcheck",
+        "editorconfig.editorconfig",
+        "hashicorp.hcl"
+      ],
+      "settings": {
+        // Vagrantfiles have no .rb extension; tell VS Code they're Ruby.
+        "files.associations": {
+          "Vagrantfile": "ruby",
+          "*.pkr.hcl": "hcl"
+        },
+        // Ruby LSP uses rbenv (this image's Ruby manager) and runs RuboCop from
+        // the Gemfile for diagnostics — bundler resolves it, so no PATH/shim
+        // juggling. Format manually (Shift+Alt+F), not on save, so RuboCop
+        // won't rewrite your style behind your back.
+        "rubyLsp.rubyVersionManager": { "identifier": "rbenv" },
+        "rubyLsp.formatter": "rubocop",
+        "[ruby]": { "editor.defaultFormatter": "Shopify.ruby-lsp" }
+      }
+    }
+  }
+}

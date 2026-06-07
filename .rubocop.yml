@@ -1,0 +1,31 @@
+# Merge our Exclude with RuboCop's defaults (vendor/, node_modules/, .git/, ...)
+# instead of replacing them -- otherwise CI's bundler-cache `vendor/bundle/` gets
+# linted (1700+ gem files).
+inherit_mode:
+  merge:
+    - Exclude
+
+AllCops:
+  TargetRubyVersion: 3.3 # Vagrant 2.4 bundles Ruby 3.3
+  NewCops: enable
+  Exclude:
+    - 'build/**/*'
+    - '.vagrant/**/*'
+    - 'vendor/**/*' # CI's bundler-cache installs gems here
+
+# The Vagrantfiles are configuration DSLs, not libraries — relax the cops that
+# only make sense for application/gem code.
+Style/Documentation:
+  Enabled: false # no doc comment expected on the helper classes
+Style/OneClassPerFile:
+  Enabled: false # a Vagrantfile is a single file; its helper classes can't be split out
+Metrics:
+  Enabled: false # the Vagrant.configure block is legitimately long
+Layout/LineLength:
+  Max: 120
+
+# Indent continuation arguments one level in, rather than aligning them under
+# the first argument (which produces deep indentation on calls like
+# config.vm.synced_folder '.', '/vagrant', type: ...).
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation

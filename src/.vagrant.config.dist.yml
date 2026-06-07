@@ -1,0 +1,88 @@
+# ==============================================================================
+# Configuration for the D3strukt0r/debian-docker box.
+# ------------------------------------------------------------------------------
+# Copy this file to ".vagrant.config.yml" and adjust it per project. The box's
+# embedded Vagrantfile reads ".vagrant.config.dist.yml" first and then overlays
+# ".vagrant.config.yml" on top, so you only need to keep the keys you change.
+#
+# Every key below is OPTIONAL; sensible defaults apply when omitted.
+# ==============================================================================
+
+vm:
+  # Name shown in the VirtualBox GUI (falls back to network.hostname).
+  name: 'Debian Docker VM'
+  cpus: 2
+  memory: 2048
+
+network:
+  # Static private IP. The allowed range is 192.168.56.1 - 192.168.63.254.
+  # (Avoid .1 in case it's used by a router.) Each box on the same host needs a
+  # unique IP. Leave unset to use DHCP -- note the hostsupdater won't work then.
+  ip: 192.168.56.2
+  # Use the .test TLD for local development (not .local on macOS -- it conflicts
+  # with Bonjour). Avoid dashes "-", which can make the host unreachable.
+  # The hostname/aliases are written to your host's hosts file by the
+  # vagrant-hostsupdater plugin (if installed). On Windows that plugin is
+  # unreliable (its elevated-write helper is racy and usually no-ops), so add the
+  # entries to %WINDIR%\System32\drivers\etc\hosts by hand, or just reach the box
+  # by its IP.
+  hostname: 'debian-docker.test'
+  # Extra hostnames (requires the vagrant-hostsupdater plugin).
+  #aliases:
+  #  - 'traefik.debian-docker.test'
+
+folder:
+  # "nfs", "rsync", "smb", or omit for the default VirtualBox shared folder.
+  # NFS folders do NOT work on Windows hosts. To avoid sudo prompts on every
+  # `vagrant up`, see https://developer.hashicorp.com/vagrant/docs/synced-folders/nfs#root-privilege-requirement
+  # On macOS, if NFS fails with "Connection reset by peer", run `sudo nfsd update`,
+  # then `vagrant halt && vagrant up` to remount.
+  #type: 'nfs'
+  # NFS protocol version. 3 is the most reliable (especially on macOS); set 4
+  # on Linux hosts if you prefer NFSv4.
+  #nfs:
+  #  version: 3
+  rsync:
+    # Only used when folder.type = "rsync".
+    exclude:
+      - '.git/'
+      - '.idea/'
+      - '.vscode/'
+      - 'node_modules/'
+  # If you use SMB (Windows hosts), set type: 'smb' and provide credentials:
+  #smb:
+  #  username:
+  #  password:
+  docker:
+    # Persist the BuildKit *build* cache on the host so `docker buildx build`
+    # layers are reused across machines/rebuilds. (Docker's image store itself
+    # can't live on a synced folder -- overlay2 needs a real local FS.)
+    #build_cache: '~/.docker/cache/build'
+
+ssh:
+  # Forward the host's SSH agent into the box (recommended for Git access)...
+  #forward_agent: true
+  # ...or copy a specific key pair into the box. If neither is set, the box
+  # falls back to ~/.ssh/id_ed25519 (then ~/.ssh/id_rsa) on the host.
+  private_key: '~/.ssh/id_ed25519'
+  public_key: '~/.ssh/id_ed25519.pub'
+  # Require working SSH access inside the box (agent forwarding or a copied key):
+  # `vagrant up` then fails with guidance if no SSH method is available. Use it
+  # for any project that needs SSH from within the box.
+  #required: true
+
+docker:
+  # Prompt for and run `docker login` on provision (for private images).
+  #login: true
+  # Start/stop Docker Compose together with the machine (`vagrant up`/`halt`).
+  #compose_file: 'compose.vm.yml'
+  #profile: 'dev'
+  # Before `up`, optionally refresh images (both default off):
+  #pull: true   # `docker compose pull` (re-pull images you already have)
+  #build: true  # `docker compose build --pull` (rebuild, pulling fresh base images)
+
+# Project-specific provisioning lives in your repo, not in the box. Point these
+# at scripts (paths relative to the project root) to run them automatically.
+#provision:
+#  post_setup: 'vagrant/post-setup.sh'  # runs once on first provision
+#  post_boot:  'vagrant/post-boot.sh'   # runs on every `vagrant up`
