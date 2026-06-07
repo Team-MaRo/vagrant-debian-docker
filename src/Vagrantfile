@@ -1,0 +1,369 @@
+# frozen_string_literal: true
+
+# ==============================================================================
+# Embedded box Vagrantfile
+# ------------------------------------------------------------------------------
+# This file is packaged *inside* the D3strukt0r/debian-docker box. Vagrant loads
+# it before the consuming project's Vagrantfile (box < ~/.vagrant.d < project),
+# so projects only need:
+#
+#   Vagrant.configure('2') do |config|
+#     config.vm.box = 'D3strukt0r/debian-docker'
+#   end
+#
+# ...plus a .vagrant.config.yml to set their machine/network/folder/etc.
+# Anything a project sets in its own Vagrantfile overrides what is configured
+# here; named provisioners can be overridden individually.
+# ==============================================================================
+
+require 'yaml'
+require 'fileutils'
+require 'io/console' # for $stdin.getpass -- hides password input on Windows too
+
+# Deep-merge so .vagrant.config.yml only needs to override individual keys.
+# https://stackoverflow.com/a/38702906/4156752
+class Hash
+  def deep_merge(other)
+    merge(other) do |_key, value1, value2|
+      value1.is_a?(Hash) && value2.is_a?(Hash) ? value1.deep_merge(value2) : value2
+    end
+  end
+
+  def deep_merge!(other)
+    merge!(other) do |_key, value1, value2|
+      value1.is_a?(Hash) && value2.is_a?(Hash) ? value1.deep_merge(value2) : value2
+    end
+  end
+end
+
+# Interactive credential prompts for an optional `docker login` (see below).
+class DockerUsername
+  def to_s
+    print "Please enter your Docker registry credentials\n"
+    print 'Username: '
+    $stdin.gets.chomp
+  end
+end
+
+class DockerPassword
+  def to_s
+    # `getpass` hides input on Windows too -- `stty -echo` is a Unix command that
+    # silently fails on Windows, leaving the token visible as you type it.
+    pass = $stdin.getpass('Password (or Access Token if you have 2FA): ').to_s
+    map = { '"' => '%22', '#' => '%23', '^' => '25%5E' }
+    re = Regexp.new(map.keys.map { |x| Regexp.escape(x) }.join('|'))
+    pass.gsub(re, map)
+  end
+end
+
+# Version requirements:
+#   * Ruby >= 2.3.0 (25.12.2015) for Hash#dig, used throughout:
+#     https://docs.ruby-lang.org/en/2.3.0/Array.html#method-i-dig
+#   * Vagrant >= 2.0.0 -- the first Vagrant whose bundled Ruby satisfies that.
+#   * Triggers need Vagrant >= 2.1.0 (03.05.2018) but are guarded below, so 2.0.x
+#     still works (just without Compose auto start/stop):
+#     https://developer.hashicorp.com/vagrant/docs/triggers
+Vagrant.require_version '>= 2.0.0'
+if Gem::Version.new(RUBY_VERSION) < Gem::Version.new('2.3.0')
+  abort "This Vagrantfile needs Ruby >= 2.3.0 (running #{RUBY_VERSION})."
+end
+
+Vagrant.configure('2') do |config|
+  # ----------------------------------------------------------------------------
+  # This Vagrantfile ships *inside* the box and is therefore evaluated from
+  # within ~/.vagrant.d/boxes/...  NEVER use __dir__/__FILE__ to locate project
+  # files. Vagrant always runs from the project directory (exposed via
+  # VAGRANT_CWD when invoked from a subdirectory).
+  # ----------------------------------------------------------------------------
+  project_dir = ENV['VAGRANT_CWD'] || Dir.pwd
+
+  # ----------------------------------------------------------------------------
+  # Load configuration: defaults from .vagrant.config.dist.yml, overridden by
+  # the developer's own .vagrant.config.yml. Both files are optional.
+  # ----------------------------------------------------------------------------
+  settings = {}
+  ['.vagrant.config.dist.yml', '.vagrant.config.yml'].each do |file|
+    path = File.join(project_dir, file)
+    next unless File.exist?(path)
+
+    loaded = YAML.load_file(path)
+    settings = settings.deep_merge(loaded) if loaded.is_a?(Hash)
+  end
+
+  # ----------------------------------------------------------------------------
+  # Configure the machine (VirtualBox)
+  # ----------------------------------------------------------------------------
+  config.vm.provider 'virtualbox' do |vb|
+    # Set the name shown in the VirtualBox GUI
+    if settings.dig('vm', 'name')
+      vb.name = settings.dig('vm', 'name')
+    elsif settings.dig('network', 'hostname')
+      vb.name = settings.dig('network', 'hostname')
+    end
+
+    vb.cpus   = settings.dig('vm', 'cpus')   if settings.dig('vm', 'cpus')
+    vb.memory = settings.dig('vm', 'memory') if settings.dig('vm', 'memory')
+
+    # Fixes "DNS Not Working"
+    # http://serverfault.com/questions/453185
+    # vb.customize ['modifyvm', :id, '--natdnshostresolver1', 'on']
+  end
+
+  if Vagrant.has_plugin?('vagrant-vbguest')
+    # Fixes "Got different reports about installed GuestAdditions version"
+    # https://github.com/dotless-de/vagrant-vbguest/issues/351
+    config.vbguest.auto_update = false
+  end
+
+  # ----------------------------------------------------------------------------
+  # Configure the network
+  # ----------------------------------------------------------------------------
+  config.vm.hostname = settings.dig('network', 'hostname') if settings.dig('network', 'hostname')
+
+  # Add alternative hostnames to /etc/hosts with vagrant-hostsupdater, which also
+  # handles removing them on `vagrant destroy`.
+  if Vagrant.has_plugin?('vagrant-hostsupdater') && settings.dig('network', 'aliases')
+    config.hostsupdater.aliases = settings.dig('network', 'aliases')
+  end
+
+  if settings.dig('network', 'ip')
+    ip = settings.dig('network', 'ip')
+    config.vm.network 'private_network', ip: ip
+
+    if Vagrant.has_plugin?('vagrant-notify-forwarder')
+      # Derive a unique port from the IP so multiple boxes don't collide.
+      octets = ip.split('.')
+      config.notify_forwarder.port = 22_000 + octets[2].to_i + octets[3].to_i
+    end
+  else
+    config.vm.network 'private_network', type: 'dhcp'
+  end
+
+  # ----------------------------------------------------------------------------
+  # Configure the synced folders
+  # ----------------------------------------------------------------------------
+  folder_type = settings.dig('folder', 'type')
+  case folder_type
+  when 'nfs'
+    config.nfs.map_uid = Process.uid
+    config.nfs.map_gid = Process.gid
+    config.vm.synced_folder '.', '/vagrant',
+      type: 'nfs',
+      nfs_version: settings.dig('folder', 'nfs', 'version') || 3,
+      nfs_udp: false, # UDP is not allowed with NFSv4
+      mount_options: %w[rw tcp nolock async]
+  when 'rsync'
+    config.vm.synced_folder '.', '/vagrant',
+      type: 'rsync',
+      rsync__args: ['--verbose', '--archive', '--delete', '-z'],
+      rsync__chown: true,
+      rsync__exclude: settings.dig('folder', 'rsync', 'exclude') || []
+
+    # An rsync watcher that uses fewer host resources at the potential cost of
+    # more rsync actions.
+    if Vagrant.has_plugin?('vagrant-gatling-rsync')
+      config.gatling.latency = 1.5
+      config.gatling.time_format = '%H:%M:%S'
+      config.gatling.rsync_on_startup = false
+    end
+  when 'smb'
+    # https://github.com/hashicorp/vagrant/issues/6677#issuecomment-165873490
+    smb_user = settings.dig('folder', 'smb', 'username')
+    smb_pass = settings.dig('folder', 'smb', 'password')
+    if smb_user && smb_pass
+      config.vm.synced_folder '.', '/vagrant',
+        type: 'smb',
+        mount_options: ['vers=3.02', 'mfsymlinks'],
+        smb_username: smb_user,
+        smb_password: smb_pass
+    else
+      config.vm.synced_folder '.', '/vagrant',
+        type: 'smb',
+        mount_options: ['vers=3.02', 'mfsymlinks']
+    end
+  else
+    # Default VirtualBox shared folders
+    config.vm.synced_folder '.', '/vagrant'
+  end
+
+  # Optionally share a host directory as the Docker build cache so it is reused
+  # across machines/projects.
+  build_cache = settings.dig('folder', 'docker', 'build_cache')
+  if build_cache
+    expanded = File.expand_path(build_cache)
+    FileUtils.mkdir_p(expanded) unless File.directory?(expanded)
+
+    config.vm.provision 'create-build-cache-folder', type: 'shell', privileged: false, inline: <<-SHELL
+      mkdir -p ~/.docker/cache/build
+    SHELL
+
+    if folder_type == 'nfs'
+      config.vm.synced_folder build_cache, '/home/vagrant/.docker/cache/build',
+        type: 'nfs',
+        nfs_version: settings.dig('folder', 'nfs', 'version') || 3,
+        nfs_udp: false,
+        mount_options: %w[rw tcp nolock async]
+    else
+      config.vm.synced_folder build_cache, '/home/vagrant/.docker/cache/build'
+    end
+
+    config.vm.provision 'fix-build-cache-permission', type: 'shell', privileged: false, run: 'always', inline: <<-SHELL
+      sudo chown -R vagrant:vagrant ~/.docker
+    SHELL
+  end
+
+  # ----------------------------------------------------------------------------
+  # SSH: forward the host agent, or copy a key into the box for Git access
+  # ----------------------------------------------------------------------------
+  if settings.dig('ssh', 'forward_agent') == true
+    # https://unix.stackexchange.com/questions/77238
+    config.ssh.forward_agent = true
+  else
+    private_key = settings.dig('ssh', 'private_key')
+    public_key  = settings.dig('ssh', 'public_key')
+
+    if private_key && public_key &&
+       File.file?(File.expand_path(private_key)) && File.file?(File.expand_path(public_key))
+      config.vm.provision 'file', source: private_key, destination: '~/.ssh/id_ed25519', run: 'always'
+      config.vm.provision 'file', source: public_key,  destination: '~/.ssh/id_ed25519.pub', run: 'always'
+    elsif File.file?(File.expand_path('~/.ssh/id_ed25519')) && File.file?(File.expand_path('~/.ssh/id_ed25519.pub'))
+      config.vm.provision 'file', source: '~/.ssh/id_ed25519',     destination: '~/.ssh/id_ed25519', run: 'always'
+      config.vm.provision 'file', source: '~/.ssh/id_ed25519.pub', destination: '~/.ssh/id_ed25519.pub', run: 'always'
+    elsif File.file?(File.expand_path('~/.ssh/id_rsa')) && File.file?(File.expand_path('~/.ssh/id_rsa.pub'))
+      config.vm.provision 'file', source: '~/.ssh/id_rsa',     destination: '~/.ssh/id_rsa', run: 'always'
+      config.vm.provision 'file', source: '~/.ssh/id_rsa.pub', destination: '~/.ssh/id_rsa.pub', run: 'always'
+    end
+
+    config.vm.provision 'fix-ssh-permissions', type: 'shell', privileged: false, run: 'always', inline: <<-SHELL
+      for key in ~/.ssh/id_ed25519 ~/.ssh/id_rsa; do
+        [ -f "$key" ] && chmod 600 "$key"
+      done
+      true
+    SHELL
+  end
+
+  # ----------------------------------------------------------------------------
+  # Optionally *require* working SSH access inside the box. Enable with:
+  #   ssh:
+  #     required: true
+  # Fails `vagrant up`/provision -- but NOT halt/destroy/ssh -- with guidance if
+  # neither agent forwarding nor a key is available. Defined after the key-copy
+  # provisioners above so a freshly copied key counts.
+  # ----------------------------------------------------------------------------
+  if settings.dig('ssh', 'required') == true
+    config.vm.provision 'require-ssh', type: 'shell', privileged: false, run: 'always', inline: <<-SHELL
+      if ssh-add -l > /dev/null 2>&1; then exit 0; fi
+      if [ -f ~/.ssh/id_ed25519 ] || [ -f ~/.ssh/id_rsa ]; then exit 0; fi
+      echo 'ERROR: this project requires SSH access inside the box, but no key was' >&2
+      echo '       found and no agent identities are forwarded. Fix one on your host:' >&2
+      echo '  * set ssh.forward_agent: true and add a key to your agent (ssh-add)' >&2
+      echo '  * keep ~/.ssh/id_ed25519 (or id_rsa) so it gets copied into the box' >&2
+      echo '  * set ssh.private_key / ssh.public_key to a specific key pair' >&2
+      echo '  * no key yet? ssh-keygen -t ed25519 -C you@example.com' >&2
+      exit 1
+    SHELL
+  end
+
+  # ----------------------------------------------------------------------------
+  # Optionally log in to a Docker registry (interactive). Enable with:
+  #   docker:
+  #     login: true
+  # ----------------------------------------------------------------------------
+  if settings.dig('docker', 'login') == true
+    config.vm.provision 'docker-login', type: 'shell', privileged: false,
+      env: { 'USERNAME' => DockerUsername.new, 'PASSWORD' => DockerPassword.new },
+      inline: <<-SHELL
+      set -e -o pipefail
+      echo "$PASSWORD" | docker login --username "$USERNAME" --password-stdin
+      SHELL
+  end
+
+  # ----------------------------------------------------------------------------
+  # Project hooks: keep project-specific setup *in the project repo* (e.g.
+  # mkcert certificates, copying compose.*.yml, creating data folders), so the
+  # box stays generic. Configure with:
+  #   provision:
+  #     post_setup: 'vagrant/post-setup.sh'  # runs once on first provision
+  #     post_boot:  'vagrant/post-boot.sh'   # runs on every `vagrant up`
+  # ----------------------------------------------------------------------------
+  post_setup = settings.dig('provision', 'post_setup')
+  if post_setup && File.file?(File.join(project_dir, post_setup))
+    config.vm.provision 'post-setup', type: 'shell', privileged: false, path: post_setup
+  end
+
+  post_boot = settings.dig('provision', 'post_boot')
+  if post_boot && File.file?(File.join(project_dir, post_boot))
+    config.vm.provision 'post-boot', type: 'shell', privileged: false, run: 'always', path: post_boot
+  end
+
+  # ----------------------------------------------------------------------------
+  # Optionally start/stop Docker Compose with the machine. Enable with:
+  #   docker:
+  #     compose_file: 'compose.vm.yml'
+  #     profile: 'dev'   # optional
+  #     pull: true       # optional: `docker compose pull` before up
+  #     build: true      # optional: `docker compose build --pull` before up
+  #
+  # `config.trigger` needs Vagrant >= 2.1.0 (see version notes at the top); on
+  # older Vagrant this is skipped -- the box still boots, just without these.
+  # ----------------------------------------------------------------------------
+  compose_file = settings.dig('docker', 'compose_file')
+  if compose_file && Gem::Version.new(Vagrant::VERSION) >= Gem::Version.new('2.1.0')
+    profile = settings.dig('docker', 'profile')
+    profile_arg = profile ? "--profile #{profile} " : ''
+    base_cmd = "docker compose -f \"#{compose_file}\" #{profile_arg}"
+
+    # Optionally refresh images before `up` (both default off).
+    up_steps = []
+    up_steps << "#{base_cmd}pull" if settings.dig('docker', 'pull') == true
+    up_steps << "#{base_cmd}build --pull" if settings.dig('docker', 'build') == true
+    up_steps << "#{base_cmd}up --detach"
+
+    config.trigger.after :up do |trigger|
+      trigger.name = 'Start Containers'
+      trigger.info = 'Starting Docker containers...'
+      trigger.run_remote = { privileged: false, inline: <<-SHELL }
+        set -e -u -o pipefail
+        cd /vagrant
+
+        # Ensure an SSH agent is available for builds that fetch private deps over
+        # SSH. With ssh.forward_agent the host agent is already forwarded; if not,
+        # start an ephemeral agent, load the copied key, and kill it on exit so we
+        # never leak an agent across `vagrant up` runs.
+        if ! ssh-add -l > /dev/null 2>&1; then
+          for key in ~/.ssh/id_ed25519 ~/.ssh/id_rsa; do
+            [ -f "$key" ] || continue
+            eval "$(ssh-agent -s)" > /dev/null
+            trap 'kill "$SSH_AGENT_PID" 2>/dev/null || true' EXIT
+            ssh-add "$key" > /dev/null 2>&1 || true
+            break
+          done
+        fi
+
+        if [ -f "#{compose_file}" ]; then
+          #{up_steps.join("\n          ")}
+        fi
+      SHELL
+    end
+
+    config.trigger.before :halt do |trigger|
+      trigger.name = 'Stop Containers'
+      trigger.info = 'Stopping Docker containers...'
+      trigger.run_remote = { privileged: false, inline: <<-SHELL }
+        set -e -u -o pipefail
+        cd /vagrant
+        if [ -f "#{compose_file}" ]; then
+          docker compose -f "#{compose_file}" down
+        fi
+      SHELL
+    end
+  end
+
+  # ----------------------------------------------------------------------------
+  # Friendly boot message
+  # ----------------------------------------------------------------------------
+  host = settings.dig('network', 'hostname') || settings.dig('network', 'ip')
+  message = 'Machine was booted.'
+  message += " The application will soon be available on https://#{host}" if host
+  config.vm.post_up_message = message
+end

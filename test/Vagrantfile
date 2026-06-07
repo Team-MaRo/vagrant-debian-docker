@@ -1,0 +1,14 @@
+# frozen_string_literal: true
+
+# Example/test Vagrantfile for the D3strukt0r/debian-docker box.
+#
+# Everything (provider, network, synced folders, SSH, triggers, ...) is driven
+# by the box's embedded Vagrantfile (../src/Vagrantfile) via .vagrant.config.yml
+# in this directory. That is the whole point of the box: consuming projects only
+# need these few lines plus their own .vagrant.config.yml.
+#
+# Here we consume the locally built box; real projects use the published name:
+#   config.vm.box = 'D3strukt0r/debian-docker'
+Vagrant.configure('2') do |config|
+  config.vm.box = 'debian-docker-local'
+end
