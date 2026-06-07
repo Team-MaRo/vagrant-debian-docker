@@ -1,0 +1,34 @@
+services:
+  php-dev:
+    build: &build-dev
+      dockerfile: Dockerfile
+      tags:
+        - docker.io/d3strukt0r/vagrant-debian-docker-example:latest
+      cache_from:
+        - docker.io/d3strukt0r/vagrant-debian-docker-example:cache
+        - type=local,src=~/.docker/cache/build
+      cache_to:
+        - type=local,dest=~/.docker/cache/build
+
+  php-prod:
+    build:
+      <<: *build-dev
+      x-bake:
+        platforms:
+          - linux/amd64
+          - linux/arm64
+  
+  db:
+    image: mysql
+    # NOTE: use of "mysql_native_password" is not recommended: https://dev.mysql.com/doc/refman/8.0/en/upgrading-from-previous-series.html#upgrade-caching-sha2-password
+    # (this is just an example, not intended to be a production configuration)
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080

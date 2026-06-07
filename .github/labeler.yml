@@ -1,0 +1,49 @@
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+        - '**/*.md'
+        - 'LICENSE.txt'
+
+feature:
+  - head-branch: ['^feature', 'feature']
+
+release:
+  - all:
+    - base-branch: 'master'
+    - head-branch: ['^release', 'release']
+
+github-actions:
+  - changed-files:
+    - any-glob-to-any-file: '.github/**'
+
+devcontainer:
+  - changed-files:
+    - any-glob-to-any-file: '.devcontainer/**'
+
+packer:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'src/*.pkr.hcl'
+        - 'src/provision.sh'
+
+vagrant:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'src/Vagrantfile'
+        - 'src/.vagrant.config.dist.yml'
+        - 'test/Vagrantfile'
+        - 'test/.vagrant.config.yml'
+
+scripts:
+  - changed-files:
+    - any-glob-to-any-file: 'bin/**'
+
+docker:
+  - changed-files:
+    - any-glob-to-any-file:
+        - 'test/Dockerfile'
+        - 'test/compose.yml'
+
+test:
+  - changed-files:
+    - any-glob-to-any-file: 'test/**'

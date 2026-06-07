@@ -1,0 +1,77 @@
+name: CI
+
+# Note: the VirtualBox box itself is built and published locally (see the
+# "Development" section in README.md) because GitHub-hosted runners cannot run
+# x86 VirtualBox (no nested virtualization). CI only lints/validates the sources.
+#
+# Each check uses `continue-on-error: true` so one failing check never skips the
+# rest, and wraps its command in `.github/scripts/summarize-step.sh` to stream
+# the output into the job summary. A trailing gate step re-derives pass/fail
+# from the per-step `outcome`s.
+
+on:
+  push:
+    branches: [master, develop]
+    paths:
+      - .github/workflows/ci.yml
+      - .github/scripts/**
+      - "bin/**"
+      - "src/**"
+      - "test/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint & validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@v3
+
+      - name: Install Packer plugins
+        run: packer init src/
+
+      - name: Set up Ruby + RuboCop
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true # installs the tooling Gemfile (rubocop)
+
+      - name: Check Packer formatting
+        id: fmt
+        continue-on-error: true
+        run: bash .github/scripts/summarize-step.sh "Packer fmt" packer fmt -check -recursive src/
+
+      - name: Validate Packer template
+        id: validate
+        continue-on-error: true
+        run: bash .github/scripts/summarize-step.sh "Packer validate" packer validate src/
+
+      - name: Lint shell scripts
+        id: shellcheck
+        continue-on-error: true
+        run: bash .github/scripts/summarize-step.sh "ShellCheck" shellcheck bin/*.sh src/*.sh .github/scripts/*.sh
+
+      - name: Lint Ruby (RuboCop)
+        id: rubocop
+        continue-on-error: true
+        run: bash .github/scripts/summarize-step.sh "RuboCop" bundle exec rubocop
+
+      # `continue-on-error: true` forces each step's `conclusion` to success
+      # regardless of `outcome`. Re-derive the real status here.
+      - name: Fail if any check failed
+        if: always()
+        run: |
+          if [ "${{ steps.fmt.outcome }}" = "failure" ] \
+             || [ "${{ steps.validate.outcome }}" = "failure" ] \
+             || [ "${{ steps.shellcheck.outcome }}" = "failure" ] \
+             || [ "${{ steps.rubocop.outcome }}" = "failure" ]; then
+            exit 1
+          fi

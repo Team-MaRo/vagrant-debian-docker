@@ -1,0 +1,19 @@
+vm:
+  name: 'Debian Docker VM (test)'
+  cpus: 2
+  memory: 2048
+
+network:
+  ip: 192.168.56.2
+  hostname: 'debian-docker.test'
+
+# Use the default VirtualBox shared folder so this test works on any host OS
+# (NFS does not work on Windows; SMB/NFS need extra setup). Switch to
+# nfs/rsync/smb in real projects.
+#folder:
+#  type: 'nfs'
+
+# Optionally run the example compose stack on `vagrant up` (see compose.yml).
+#docker:
+#  compose_file: 'compose.yml'
+#  profile: 'dev'
