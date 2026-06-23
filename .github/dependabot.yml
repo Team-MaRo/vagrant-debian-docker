@@ -8,27 +8,30 @@
 
 version: 2
 updates:
-  # Keep the GitHub Actions used by our workflows up to date.
   - package-ecosystem: github-actions
     directory: /
     labels:
       - "dependabot :robot:"
     schedule:
-      interval: weekly # on monday
+      interval: weekly
+      day: monday
       time: '09:30'
       timezone: Europe/Zurich
     groups:
       github-actions:
-        update-types:
-          - minor
-          - patch
+        patterns:
+          - "*"
 
-  # The example image used by the test setup (test/Dockerfile -> php:8.2-fpm).
   - package-ecosystem: docker
     directory: /test
     labels:
       - "dependabot :robot:"
     schedule:
       interval: weekly
+      day: monday
       time: '09:30'
       timezone: Europe/Zurich
+    groups:
+      docker:
+        patterns:
+          - "*"
