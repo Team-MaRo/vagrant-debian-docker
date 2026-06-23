@@ -1,6 +1,7 @@
 build/
 .vagrant/
 *.box
+src/*-VBoxHeadless-*.log
 
 # CLAUDE.md is a thin pointer to AGENTS.md (the tracked source of guidance)
 CLAUDE.md
