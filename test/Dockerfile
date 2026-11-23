@@ -1,4 +1,4 @@
-FROM php:8.5-fpm
+FROM php:8.6-fpm
 
 RUN <<EOT
     #!/bin/bash -e -u -x -o pipefail
